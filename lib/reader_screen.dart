@@ -25,6 +25,8 @@ class ReaderScreen extends StatefulWidget {
 
 class _ReaderScreenState extends State<ReaderScreen> {
   late int index;
+  int? currentPage;
+  int? totalPages;
 
   Chapter get chapter => widget.chapters[index];
 
@@ -32,6 +34,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   void initState() {
     super.initState();
     index = widget.startIndex;
+    currentPage = widget.store.lastPage(chapter.number);
     widget.store.setLastChapter(chapter.number);
     _pushWidgetUpdate();
   }
@@ -48,7 +51,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
   void _go(int delta) {
     final newIndex = index + delta;
     if (newIndex < 0 || newIndex >= widget.chapters.length) return;
-    setState(() => index = newIndex);
+    setState(() {
+      index = newIndex;
+      currentPage = widget.store.lastPage(chapter.number);
+      totalPages = null;
+    });
     widget.store.setLastChapter(chapter.number);
     _pushWidgetUpdate();
   }
@@ -89,11 +96,24 @@ class _ReaderScreenState extends State<ReaderScreen> {
               swipeHorizontal: false,
               autoSpacing: true,
               pageFling: true,
+              onRender: (pages) => setState(() => totalPages = pages),
               onPageChanged: (page, total) {
                 if (page != null) widget.store.setLastPage(chapter.number, page);
+                setState(() {
+                  currentPage = page;
+                  if (total != null) totalPages = total;
+                });
               },
             ),
           ),
+          if (totalPages != null && currentPage != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                'Page ${currentPage! + 1} of $totalPages',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
           SafeArea(
             top: false,
             child: Row(
