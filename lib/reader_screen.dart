@@ -88,32 +88,44 @@ class _ReaderScreenState extends State<ReaderScreen> {
       body: Column(
         children: [
           Expanded(
-            child: PDFView(
-              key: ValueKey(chapter.path),
-              filePath: chapter.path,
-              defaultPage: widget.store.lastPage(chapter.number),
-              enableSwipe: true,
-              swipeHorizontal: false,
-              autoSpacing: true,
-              pageFling: true,
-              onRender: (pages) => setState(() => totalPages = pages),
-              onPageChanged: (page, total) {
-                if (page != null) widget.store.setLastPage(chapter.number, page);
-                setState(() {
-                  currentPage = page;
-                  if (total != null) totalPages = total;
-                });
-              },
+            child: Stack(
+              children: [
+                PDFView(
+                  key: ValueKey(chapter.path),
+                  filePath: chapter.path,
+                  defaultPage: widget.store.lastPage(chapter.number),
+                  enableSwipe: true,
+                  swipeHorizontal: false,
+                  autoSpacing: true,
+                  pageFling: true,
+                  onRender: (pages) => setState(() => totalPages = pages),
+                  onPageChanged: (page, total) {
+                    if (page != null) widget.store.setLastPage(chapter.number, page);
+                    setState(() {
+                      currentPage = page;
+                      if (total != null) totalPages = total;
+                    });
+                  },
+                ),
+                if (totalPages != null && currentPage != null)
+                  Positioned(
+                    right: 12,
+                    bottom: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${currentPage! + 1}/$totalPages',
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
-          if (totalPages != null && currentPage != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(
-                'Page ${currentPage! + 1} of $totalPages',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
           SafeArea(
             top: false,
             child: Row(
