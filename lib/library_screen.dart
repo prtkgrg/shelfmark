@@ -12,6 +12,7 @@ import 'permissions.dart';
 import 'progress_store.dart';
 import 'series_screen.dart';
 import 'stats.dart';
+import 'theme_controller.dart';
 import 'thumbnail.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -168,6 +169,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
       appBar: AppBar(
         title: const Text('Shelfmark'),
         actions: [
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: ThemeController.mode,
+            builder: (context, mode, _) => PopupMenuButton<ThemeMode>(
+              icon: Icon(switch (mode) {
+                ThemeMode.light => Icons.light_mode,
+                ThemeMode.dark => Icons.dark_mode,
+                ThemeMode.system => Icons.brightness_auto,
+              }),
+              tooltip: 'Theme',
+              initialValue: mode,
+              onSelected: ThemeController.setMode,
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: ThemeMode.system, child: Text('System')),
+                PopupMenuItem(value: ThemeMode.light, child: Text('Light')),
+                PopupMenuItem(value: ThemeMode.dark, child: Text('Dark')),
+              ],
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.upload_file),
             tooltip: 'Export backup',
@@ -204,36 +223,50 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         ),
                       ],
                     )
-                  : ListView(
+                  : ReorderableListView.builder(
                       padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-                      children: [
-                        if (streakDays > 0 || chaptersThisWeek > 0)
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  _StatChip(
-                                    icon: Icons.local_fire_department,
-                                    label: '$streakDays day streak',
-                                  ),
-                                  _StatChip(
-                                    icon: Icons.menu_book,
-                                    label: '$chaptersThisWeek this week',
-                                  ),
-                                ],
+                      header: Column(
+                        children: [
+                          if (streakDays > 0 || chaptersThisWeek > 0)
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    _StatChip(
+                                      icon: Icons.local_fire_department,
+                                      label: '$streakDays day streak',
+                                    ),
+                                    _StatChip(
+                                      icon: Icons.menu_book,
+                                      label: '$chaptersThisWeek this week',
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        const SizedBox(height: 8),
-                        ...entries.map((e) => _SeriesCard(
-                              entry: e,
-                              onTap: () => _openSeries(e.series),
-                              onRename: () => _renameSeries(e.series),
-                              onRemove: () => _removeSeries(e.series),
-                            )),
-                      ],
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                      itemCount: entries.length,
+                      itemBuilder: (context, i) {
+                        final e = entries[i];
+                        return _SeriesCard(
+                          key: ValueKey(e.series.id),
+                          entry: e,
+                          onTap: () => _openSeries(e.series),
+                          onRename: () => _renameSeries(e.series),
+                          onRemove: () => _removeSeries(e.series),
+                        );
+                      },
+                      onReorderItem: (oldIndex, newIndex) async {
+                        await library.reorder(oldIndex, newIndex);
+                        setState(() {
+                          final item = entries.removeAt(oldIndex);
+                          entries.insert(newIndex, item);
+                        });
+                      },
                     ),
             ),
     );
@@ -265,6 +298,7 @@ class _SeriesCard extends StatelessWidget {
   final VoidCallback onRemove;
 
   const _SeriesCard({
+    super.key,
     required this.entry,
     required this.onTap,
     required this.onRename,

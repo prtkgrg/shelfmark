@@ -73,25 +73,68 @@ Future<void> importBackup(BuildContext context, LibraryStore library) async {
   }
 
   final seriesList = (payload['series'] as List?) ?? [];
-  var restored = 0;
-  var skipped = 0;
+
+  // First pass: parse entries without touching storage, so we can warn
+  // about overwrites before committing anything.
+  final parsed = <Map<String, dynamic>>[];
+  var parseSkipped = 0;
   for (final rawEntry in seriesList) {
     try {
       final entry = rawEntry as Map<String, dynamic>;
-      final id = entry['id'] as String;
-      final name = entry['name'] as String;
-      final folderPath = entry['folderPath'] as String;
+      parsed.add({
+        'id': entry['id'] as String,
+        'name': entry['name'] as String,
+        'folderPath': entry['folderPath'] as String,
+        'readAt': Map<String, String>.from(entry['readAt'] as Map? ?? {}),
+        'lastPage': Map<String, int>.from(entry['lastPage'] as Map? ?? {}),
+        'lastChapter': entry['lastChapter'] as int?,
+      });
+    } catch (_) {
+      parseSkipped++;
+    }
+  }
 
+  final existingById = {for (final s in library.series) s.id: s};
+  final conflicts = parsed
+      .where((e) => existingById.containsKey(e['id']))
+      .map((e) => existingById[e['id']]!.name)
+      .toList();
+
+  if (conflicts.isNotEmpty) {
+    if (!context.mounted) return;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Overwrite existing progress?'),
+        content: Text(
+          'This backup will overwrite reading progress for:\n\n'
+          '${conflicts.map((n) => '• $n').join('\n')}\n\n'
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Overwrite')),
+        ],
+      ),
+    );
+    if (proceed != true) return;
+  }
+
+  var restored = 0;
+  var skipped = parseSkipped;
+  for (final entry in parsed) {
+    try {
+      final id = entry['id'] as String;
       await library.addOrReplaceSeries(Series(
         id: id,
-        name: name,
-        folderPath: folderPath,
+        name: entry['name'] as String,
+        folderPath: entry['folderPath'] as String,
       ));
 
       final store = ProgressStore(id);
       await store.restoreRaw(
-        readAt: Map<String, String>.from(entry['readAt'] as Map? ?? {}),
-        lastPage: Map<String, int>.from(entry['lastPage'] as Map? ?? {}),
+        readAt: entry['readAt'] as Map<String, String>,
+        lastPage: entry['lastPage'] as Map<String, int>,
         lastChapter: entry['lastChapter'] as int?,
       );
       restored++;

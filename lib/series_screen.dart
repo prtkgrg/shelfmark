@@ -88,7 +88,12 @@ class _SeriesScreenState extends State<SeriesScreen> {
     final index = chapters.indexOf(c);
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ReaderScreen(chapters: chapters, startIndex: index, store: store),
+        builder: (_) => ReaderScreen(
+          seriesName: widget.series.name,
+          chapters: chapters,
+          startIndex: index,
+          store: store,
+        ),
       ),
     );
     setState(() {});

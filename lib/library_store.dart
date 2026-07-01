@@ -53,6 +53,15 @@ class LibraryStore {
     await _persist();
   }
 
+  /// [newIndex] must already account for the item's removal at [oldIndex]
+  /// (i.e. the final resting index), matching ReorderableListView's
+  /// onReorderItem contract.
+  Future<void> reorder(int oldIndex, int newIndex) async {
+    final item = series.removeAt(oldIndex);
+    series.insert(newIndex, item);
+    await _persist();
+  }
+
   Future<void> removeSeries(String id) async {
     series.removeWhere((e) => e.id == id);
     await _persist();

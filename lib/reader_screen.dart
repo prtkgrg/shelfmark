@@ -3,14 +3,17 @@ import 'package:flutter_pdfview/flutter_pdfview.dart';
 
 import 'models/chapter.dart';
 import 'progress_store.dart';
+import 'widget_service.dart';
 
 class ReaderScreen extends StatefulWidget {
+  final String seriesName;
   final List<Chapter> chapters;
   final int startIndex;
   final ProgressStore store;
 
   const ReaderScreen({
     super.key,
+    required this.seriesName,
     required this.chapters,
     required this.startIndex,
     required this.store,
@@ -30,6 +33,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
     super.initState();
     index = widget.startIndex;
     widget.store.setLastChapter(chapter.number);
+    _pushWidgetUpdate();
+  }
+
+  void _pushWidgetUpdate() {
+    WidgetService.update(
+      seriesName: widget.seriesName,
+      chapterNumber: chapter.number,
+      totalChapters: widget.chapters.length,
+      readCount: widget.store.readCount,
+    );
   }
 
   void _go(int delta) {
@@ -37,11 +50,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (newIndex < 0 || newIndex >= widget.chapters.length) return;
     setState(() => index = newIndex);
     widget.store.setLastChapter(chapter.number);
+    _pushWidgetUpdate();
   }
 
   Future<void> _toggleRead() async {
     await widget.store.setRead(chapter.number, !widget.store.isRead(chapter.number));
     setState(() {});
+    _pushWidgetUpdate();
   }
 
   Future<void> _markReadAndNext() async {

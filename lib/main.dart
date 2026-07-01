@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'library_screen.dart';
+import 'theme_controller.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await ThemeController.load();
   runApp(const ShelfmarkApp());
 }
 
@@ -11,14 +14,25 @@ class ShelfmarkApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Shelfmark',
-      theme: ThemeData(
-        colorSchemeSeed: Colors.blueGrey,
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      ),
-      home: const LibraryScreen(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeController.mode,
+      builder: (context, mode, _) {
+        return MaterialApp(
+          title: 'Shelfmark',
+          themeMode: mode,
+          theme: ThemeData(
+            colorSchemeSeed: Colors.blueGrey,
+            brightness: Brightness.light,
+            useMaterial3: true,
+          ),
+          darkTheme: ThemeData(
+            colorSchemeSeed: Colors.blueGrey,
+            brightness: Brightness.dark,
+            useMaterial3: true,
+          ),
+          home: const LibraryScreen(),
+        );
+      },
     );
   }
 }
