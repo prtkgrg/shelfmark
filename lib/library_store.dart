@@ -47,7 +47,9 @@ class LibraryStore {
   }
 
   Future<void> renameSeries(String id, String newName) async {
-    series.firstWhere((e) => e.id == id).name = newName;
+    final index = series.indexWhere((e) => e.id == id);
+    if (index == -1) return;
+    series[index].name = newName;
     await _persist();
   }
 

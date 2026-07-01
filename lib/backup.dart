@@ -73,26 +73,41 @@ Future<void> importBackup(BuildContext context, LibraryStore library) async {
   }
 
   final seriesList = (payload['series'] as List?) ?? [];
+  var restored = 0;
+  var skipped = 0;
   for (final rawEntry in seriesList) {
-    final entry = rawEntry as Map<String, dynamic>;
-    final id = entry['id'] as String;
+    try {
+      final entry = rawEntry as Map<String, dynamic>;
+      final id = entry['id'] as String;
+      final name = entry['name'] as String;
+      final folderPath = entry['folderPath'] as String;
 
-    await library.addOrReplaceSeries(Series(
-      id: id,
-      name: entry['name'] as String,
-      folderPath: entry['folderPath'] as String,
-    ));
+      await library.addOrReplaceSeries(Series(
+        id: id,
+        name: name,
+        folderPath: folderPath,
+      ));
 
-    final store = ProgressStore(id);
-    await store.restoreRaw(
-      readAt: Map<String, String>.from(entry['readAt'] as Map? ?? {}),
-      lastPage: Map<String, int>.from(entry['lastPage'] as Map? ?? {}),
-      lastChapter: entry['lastChapter'] as int?,
-    );
+      final store = ProgressStore(id);
+      await store.restoreRaw(
+        readAt: Map<String, String>.from(entry['readAt'] as Map? ?? {}),
+        lastPage: Map<String, int>.from(entry['lastPage'] as Map? ?? {}),
+        lastChapter: entry['lastChapter'] as int?,
+      );
+      restored++;
+    } catch (_) {
+      skipped++;
+    }
   }
 
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(content: Text('Backup restored.')),
+    SnackBar(
+      content: Text(
+        skipped == 0
+            ? 'Backup restored ($restored series).'
+            : 'Backup restored ($restored series, $skipped skipped due to invalid data).',
+      ),
+    ),
   );
 }

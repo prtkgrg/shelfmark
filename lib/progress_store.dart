@@ -14,6 +14,23 @@ class ProgressStore {
   String get _lastChapterKey => 'lastchapter_$seriesId';
   String get _lastPageKey => 'lastpage_$seriesId';
 
+  /// Parses a `{"chapterNumber": value}` JSON map into `Map<int, T>`,
+  /// silently dropping entries whose key or value doesn't parse. Backup
+  /// files can be hand-edited or come from a different app version, so
+  /// this must never throw.
+  static Map<int, T> _parseIntKeyedMap<T>(
+    Map<String, dynamic> raw,
+    T? Function(dynamic) parseValue,
+  ) {
+    final result = <int, T>{};
+    for (final entry in raw.entries) {
+      final key = int.tryParse(entry.key);
+      final value = parseValue(entry.value);
+      if (key != null && value != null) result[key] = value;
+    }
+    return result;
+  }
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     lastChapter = prefs.getInt(_lastChapterKey);
@@ -21,13 +38,13 @@ class ProgressStore {
     final rawRead = prefs.getString(_readKey);
     if (rawRead != null) {
       final decoded = jsonDecode(rawRead) as Map<String, dynamic>;
-      _readAt = decoded.map((k, v) => MapEntry(int.parse(k), v as String));
+      _readAt = _parseIntKeyedMap(decoded, (v) => v is String ? v : null);
     }
 
     final rawPage = prefs.getString(_lastPageKey);
     if (rawPage != null) {
       final decoded = jsonDecode(rawPage) as Map<String, dynamic>;
-      _lastPage = decoded.map((k, v) => MapEntry(int.parse(k), v as int));
+      _lastPage = _parseIntKeyedMap(decoded, (v) => v is int ? v : null);
     }
   }
 
@@ -40,8 +57,9 @@ class ProgressStore {
 
   int get readCount => _readAt.length;
 
-  Iterable<DateTime> get allReadTimestamps =>
-      _readAt.values.map((s) => DateTime.parse(s));
+  Iterable<DateTime> get allReadTimestamps => _readAt.values
+      .map((s) => DateTime.tryParse(s))
+      .whereType<DateTime>();
 
   Future<void> setRead(int number, bool value) async {
     if (value) {
@@ -84,12 +102,18 @@ class ProgressStore {
     required Map<String, int> lastPage,
     int? lastChapter,
   }) async {
-    _readAt = readAt.map((k, v) => MapEntry(int.parse(k), v));
-    _lastPage = lastPage.map((k, v) => MapEntry(int.parse(k), v));
+    _readAt = _parseIntKeyedMap(readAt, (v) => v is String ? v : null);
+    _lastPage = _parseIntKeyedMap(lastPage, (v) => v is int ? v : null);
     this.lastChapter = lastChapter;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_readKey, jsonEncode(readAt));
-    await prefs.setString(_lastPageKey, jsonEncode(lastPage));
+    await prefs.setString(
+      _readKey,
+      jsonEncode(_readAt.map((k, v) => MapEntry(k.toString(), v))),
+    );
+    await prefs.setString(
+      _lastPageKey,
+      jsonEncode(_lastPage.map((k, v) => MapEntry(k.toString(), v))),
+    );
     if (lastChapter != null) await prefs.setInt(_lastChapterKey, lastChapter);
   }
 }

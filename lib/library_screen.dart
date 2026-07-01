@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 
 import 'backup.dart';
@@ -55,11 +56,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final allTimestamps = <DateTime>[];
 
     for (final s in library.series) {
-      final chapters = scanChapters(s.folderPath);
+      final chapters = await compute(scanChapters, s.folderPath);
       final store = ProgressStore(s.id);
       await store.load();
       allTimestamps.addAll(store.allReadTimestamps);
-      final cover = await getOrGenerateCoverThumbnail(s.id, s.folderPath);
+      final cover = await getOrGenerateCoverThumbnail(s.id, chapters);
       newEntries.add(_SeriesEntry(
         series: s,
         totalChapters: chapters.length,
@@ -89,6 +90,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
     final path = await FilePicker.getDirectoryPath();
     if (path == null) return;
+
+    final existing = library.series.where((s) => s.folderPath == path);
+    if (existing.isNotEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('This folder is already in your library as "${existing.first.name}".')),
+        );
+      }
+      return;
+    }
 
     final defaultName = path.split('/').where((p) => p.isNotEmpty).last;
     final name = await _promptName(initial: defaultName, title: 'Name this series');

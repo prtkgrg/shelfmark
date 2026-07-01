@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 
 import 'chapter_scanner.dart';
@@ -40,7 +41,7 @@ class _SeriesScreenState extends State<SeriesScreen> {
 
   Future<void> _rescan() async {
     setState(() => loading = true);
-    final found = scanChapters(widget.series.folderPath);
+    final found = await compute(scanChapters, widget.series.folderPath);
     if (!mounted) return;
     setState(() {
       chapters = found;

@@ -3,20 +3,32 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
 
-import 'chapter_scanner.dart';
+import 'models/chapter.dart';
 
 /// Renders the first page of a series' earliest chapter to a cached PNG and
 /// returns the file. Returns null if the series has no chapters or rendering
-/// fails (e.g. corrupt PDF).
-Future<File?> getOrGenerateCoverThumbnail(String seriesId, String folderPath) async {
+/// fails (e.g. corrupt PDF) and no prior cache exists.
+///
+/// [chapters] should already be freshly scanned by the caller (avoids
+/// re-listing a potentially large folder just for the cover).
+Future<File?> getOrGenerateCoverThumbnail(String seriesId, List<Chapter> chapters) async {
+  if (chapters.isEmpty) return null;
+
   final supportDir = await getApplicationSupportDirectory();
   final cacheDir = Directory('${supportDir.path}/covers');
   if (!cacheDir.existsSync()) cacheDir.createSync(recursive: true);
   final cacheFile = File('${cacheDir.path}/$seriesId.png');
-  if (cacheFile.existsSync()) return cacheFile;
+  final markerFile = File('${cacheDir.path}/$seriesId.source');
 
-  final chapters = scanChapters(folderPath);
-  if (chapters.isEmpty) return null;
+  // Identifies which chapter the cached cover was rendered from, so a
+  // rescan that changes the earliest chapter (e.g. an earlier chapter
+  // gets added later) regenerates the cover instead of keeping it stale.
+  final sourceKey = '${chapters.first.number}:${chapters.first.filename}';
+  if (cacheFile.existsSync() &&
+      markerFile.existsSync() &&
+      markerFile.readAsStringSync() == sourceKey) {
+    return cacheFile;
+  }
 
   try {
     final document = await PdfDocument.openFile(chapters.first.path);
@@ -28,16 +40,21 @@ Future<File?> getOrGenerateCoverThumbnail(String seriesId, String folderPath) as
     );
     await page.close();
     await document.close();
-    if (rendered == null) return null;
+    if (rendered == null) return cacheFile.existsSync() ? cacheFile : null;
     await cacheFile.writeAsBytes(rendered.bytes);
+    await markerFile.writeAsString(sourceKey);
     return cacheFile;
   } catch (_) {
-    return null;
+    // Rendering failed (e.g. corrupt PDF) - fall back to a stale cached
+    // cover rather than showing nothing, if one exists.
+    return cacheFile.existsSync() ? cacheFile : null;
   }
 }
 
 Future<void> invalidateCoverThumbnail(String seriesId) async {
   final supportDir = await getApplicationSupportDirectory();
-  final cacheFile = File('${supportDir.path}/covers/$seriesId.png');
-  if (cacheFile.existsSync()) await cacheFile.delete();
+  final coverFile = File('${supportDir.path}/covers/$seriesId.png');
+  final markerFile = File('${supportDir.path}/covers/$seriesId.source');
+  if (coverFile.existsSync()) await coverFile.delete();
+  if (markerFile.existsSync()) await markerFile.delete();
 }
