@@ -29,7 +29,7 @@ class ContinueReadingWidgetProvider : HomeWidgetProvider() {
           setTextViewText(R.id.widget_series_name, seriesName)
           setTextViewText(
               R.id.widget_chapter_label,
-              "Chapter $chapterNumber of $totalChapters",
+              "Chapter $chapterNumber · $readCount/$totalChapters read",
           )
           val progress = if (totalChapters > 0) (readCount * 100 / totalChapters) else 0
           setProgressBar(R.id.widget_progress, 100, progress, false)

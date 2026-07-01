@@ -262,6 +262,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       },
                       onReorderItem: (oldIndex, newIndex) async {
                         await library.reorder(oldIndex, newIndex);
+                        if (!mounted) return;
                         setState(() {
                           final item = entries.removeAt(oldIndex);
                           entries.insert(newIndex, item);
