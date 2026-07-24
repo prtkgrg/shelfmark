@@ -55,6 +55,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool loading = true;
   int streakDays = 0;
   int chaptersThisWeek = 0;
+  final Set<String> refreshingIds = {}; // series currently checking releases
 
   @override
   void initState() {
@@ -162,6 +163,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (name == null || name.trim().isEmpty) return;
     await library.renameSeries(s.id, name.trim());
     await _load();
+  }
+
+  /// Manually re-checks one series' latest release. [entry] carries the
+  /// highest local chapter needed to compute the new-count.
+  Future<void> _refreshOne(_SeriesEntry entry) async {
+    final s = entry.series;
+    if (s.sourceType == null || refreshingIds.contains(s.id)) return;
+    setState(() => refreshingIds.add(s.id));
+
+    final result = await ReleaseTracker.refreshSeries(library, s, entry.highestLocal);
+
+    if (!mounted) return;
+    setState(() => refreshingIds.remove(s.id));
+    final msg = switch (result) {
+      null => 'Not tracked.',
+      TrackResult(fetched: false) => "Couldn't reach the source. Try again later.",
+      TrackResult(newCount: 0) => 'Up to date (latest ${_fmtNum(s.latestChapter!)}).',
+      TrackResult(:final newCount) =>
+        '$newCount new (latest ${_fmtNum(s.latestChapter!)}).',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _configureTracking(Series s) async {
@@ -301,9 +323,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         return _SeriesCard(
                           key: ValueKey(e.series.id),
                           entry: e,
+                          refreshing: refreshingIds.contains(e.series.id),
                           onTap: () => _openSeries(e.series),
                           onRename: () => _renameSeries(e.series),
                           onTrack: () => _configureTracking(e.series),
+                          onRefresh: () => _refreshOne(e),
                           onRemove: () => _removeSeries(e.series),
                         );
                       },
@@ -444,17 +468,21 @@ class _StatChip extends StatelessWidget {
 
 class _SeriesCard extends StatelessWidget {
   final _SeriesEntry entry;
+  final bool refreshing;
   final VoidCallback onTap;
   final VoidCallback onRename;
   final VoidCallback onTrack;
+  final VoidCallback onRefresh;
   final VoidCallback onRemove;
 
   const _SeriesCard({
     super.key,
     required this.entry,
+    required this.refreshing,
     required this.onTap,
     required this.onRename,
     required this.onTrack,
+    required this.onRefresh,
     required this.onRemove,
   });
 
@@ -514,6 +542,18 @@ class _SeriesCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (tracked)
+                IconButton(
+                  tooltip: 'Check for new chapters',
+                  onPressed: refreshing ? null : onRefresh,
+                  icon: refreshing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
+                ),
               PopupMenuButton<String>(
                 onSelected: (v) {
                   if (v == 'rename') onRename();
