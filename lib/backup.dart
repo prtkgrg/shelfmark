@@ -18,6 +18,10 @@ Future<void> exportBackup(BuildContext context, LibraryStore library) async {
       'id': s.id,
       'name': s.name,
       'folderPath': s.folderPath,
+      'sourceType': s.sourceType,
+      'sourceRef': s.sourceRef,
+      'latestChapter': s.latestChapter,
+      'lastCheckedAt': s.lastCheckedAt,
       'readAt': store.readAtRaw,
       'lastPage': store.lastPageRaw,
       'lastChapter': store.lastChapter,
@@ -85,6 +89,10 @@ Future<void> importBackup(BuildContext context, LibraryStore library) async {
         'id': entry['id'] as String,
         'name': entry['name'] as String,
         'folderPath': entry['folderPath'] as String,
+        'sourceType': entry['sourceType'] as String?,
+        'sourceRef': entry['sourceRef'] as String?,
+        'latestChapter': entry['latestChapter'] as num?,
+        'lastCheckedAt': entry['lastCheckedAt'] as String?,
         'readAt': Map<String, String>.from(entry['readAt'] as Map? ?? {}),
         'lastPage': Map<String, int>.from(entry['lastPage'] as Map? ?? {}),
         'lastChapter': entry['lastChapter'] as int?,
@@ -129,6 +137,10 @@ Future<void> importBackup(BuildContext context, LibraryStore library) async {
         id: id,
         name: entry['name'] as String,
         folderPath: entry['folderPath'] as String,
+        sourceType: entry['sourceType'] as String?,
+        sourceRef: entry['sourceRef'] as String?,
+        latestChapter: entry['latestChapter'] as num?,
+        lastCheckedAt: entry['lastCheckedAt'] as String?,
       ));
 
       final store = ProgressStore(id);
