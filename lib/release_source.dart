@@ -29,6 +29,23 @@ abstract class ReleaseSource {
     return null;
   }
 
+  /// A browsable web URL for the series' source, or null if untracked /
+  /// misconfigured. For MangaDex a bare id is expanded to a title URL; for a
+  /// scrape source the ref is already a URL.
+  static String? sourceUrlFor(Series s) {
+    final ref = s.sourceRef?.trim();
+    if (ref == null || ref.isEmpty) return null;
+    switch (s.sourceType) {
+      case 'mangadex':
+        final id = MangaDexSource.extractId(ref);
+        return id == null ? null : 'https://mangadex.org/title/$id';
+      case 'scrape':
+        return ref;
+      default:
+        return null;
+    }
+  }
+
   /// Builds the source configured on [s], or null if the series isn't
   /// tracked / is misconfigured.
   static ReleaseSource? forSeries(Series s) {

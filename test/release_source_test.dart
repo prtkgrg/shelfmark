@@ -1,7 +1,11 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shelfmark/models/series.dart';
 import 'package:shelfmark/release_source.dart';
+
+Series _series({String? type, String? ref}) =>
+    Series(id: 'x', name: 'X', folderPath: '/x', sourceType: type, sourceRef: ref);
 
 void main() {
   group('MangaDexSource.extractId', () {
@@ -44,6 +48,29 @@ void main() {
       expect(MangaDexSource.parseAggregate({'volumes': {}}), isNull);
       expect(MangaDexSource.parseAggregate({}), isNull);
       expect(MangaDexSource.parseAggregate('nope'), isNull);
+    });
+  });
+
+  group('ReleaseSource.sourceUrlFor', () {
+    const opId = 'a1c7c817-4e59-43b7-9365-09675a149a6f';
+
+    test('expands a MangaDex id to a title URL', () {
+      expect(
+        ReleaseSource.sourceUrlFor(_series(type: 'mangadex', ref: opId)),
+        'https://mangadex.org/title/$opId',
+      );
+    });
+
+    test('returns a scrape ref unchanged', () {
+      expect(
+        ReleaseSource.sourceUrlFor(_series(type: 'scrape', ref: 'https://tcb.example/op')),
+        'https://tcb.example/op',
+      );
+    });
+
+    test('null when untracked or misconfigured', () {
+      expect(ReleaseSource.sourceUrlFor(_series()), isNull);
+      expect(ReleaseSource.sourceUrlFor(_series(type: 'mangadex', ref: 'nope')), isNull);
     });
   });
 
