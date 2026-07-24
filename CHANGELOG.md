@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.0
+
+### Added
+- Release tracking — attach a MangaDex series (official English) or any web page
+  to a series; the app auto-fetches the latest released chapter number on library
+  open, shows an "N new" badge (latest release minus highest chapter on disk),
+  and sends a notification when new chapters appear. Tracking and alerts only;
+  chapters are not downloaded.
+
 ## v1.1.0
 
 ### Added

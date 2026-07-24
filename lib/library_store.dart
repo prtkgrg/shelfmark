@@ -53,6 +53,29 @@ class LibraryStore {
     await _persist();
   }
 
+  /// Sets (or clears, when [sourceType]/[sourceRef] are null) the release
+  /// tracking source for a series. Changing the source invalidates the cached
+  /// [latestChapter] so a stale number from the old source isn't shown.
+  Future<void> setSource(String id, {String? sourceType, String? sourceRef}) async {
+    final index = series.indexWhere((e) => e.id == id);
+    if (index == -1) return;
+    final s = series[index];
+    s.sourceType = sourceType;
+    s.sourceRef = sourceRef;
+    s.latestChapter = null;
+    s.lastCheckedAt = null;
+    await _persist();
+  }
+
+  /// Persists a freshly fetched latest-chapter number and check timestamp.
+  Future<void> updateLatest(String id, num latestChapter) async {
+    final index = series.indexWhere((e) => e.id == id);
+    if (index == -1) return;
+    series[index].latestChapter = latestChapter;
+    series[index].lastCheckedAt = DateTime.now().toIso8601String();
+    await _persist();
+  }
+
   /// [newIndex] must already account for the item's removal at [oldIndex]
   /// (i.e. the final resting index), matching ReorderableListView's
   /// onReorderItem contract.

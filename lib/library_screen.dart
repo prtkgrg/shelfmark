@@ -10,6 +10,8 @@ import 'library_store.dart';
 import 'models/series.dart';
 import 'permissions.dart';
 import 'progress_store.dart';
+import 'release_source.dart';
+import 'release_tracker.dart';
 import 'series_screen.dart';
 import 'stats.dart';
 import 'theme_controller.dart';
@@ -26,14 +28,25 @@ class _SeriesEntry {
   final Series series;
   final int totalChapters;
   final int readCount;
+  final int highestLocal; // highest chapter number present on disk
   final File? cover;
 
   _SeriesEntry({
     required this.series,
     required this.totalChapters,
     required this.readCount,
+    required this.highestLocal,
     required this.cover,
   });
+
+  /// Chapters released beyond the highest local PDF. Reads the (live,
+  /// mutable) [Series.latestChapter] so it reflects the latest fetch.
+  int get newChapters {
+    final latest = series.latestChapter;
+    if (latest == null) return 0;
+    final diff = latest.floor() - highestLocal;
+    return diff > 0 ? diff : 0;
+  }
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {
@@ -42,6 +55,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool loading = true;
   int streakDays = 0;
   int chaptersThisWeek = 0;
+  final Set<String> refreshingIds = {}; // series currently checking releases
 
   @override
   void initState() {
@@ -55,17 +69,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     final newEntries = <_SeriesEntry>[];
     final allTimestamps = <DateTime>[];
+    final highestLocalById = <String, int>{};
 
     for (final s in library.series) {
       final chapters = await compute(scanChapters, s.folderPath);
       final store = ProgressStore(s.id);
       await store.load();
       allTimestamps.addAll(store.allReadTimestamps);
+      highestLocalById[s.id] = chapters.isEmpty ? 0 : chapters.last.number;
       final cover = await getOrGenerateCoverThumbnail(s.id, chapters);
       newEntries.add(_SeriesEntry(
         series: s,
         totalChapters: chapters.length,
         readCount: store.readCount,
+        highestLocal: highestLocalById[s.id]!,
         cover: cover,
       ));
     }
@@ -77,6 +94,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
       chaptersThisWeek = countInLastDays(allTimestamps, 7);
       loading = false;
     });
+
+    // Auto-refresh release numbers in the background once the grid is shown.
+    _refreshReleases(highestLocalById);
+  }
+
+  /// Fetches latest chapters for tracked series, then rebuilds so badges
+  /// update. Notifications are fired inside the tracker. Best-effort.
+  Future<void> _refreshReleases(Map<String, int> highestLocalById) async {
+    final tracked = library.series.any((s) => s.sourceType != null);
+    if (!tracked) return;
+    await ReleaseTracker.refreshAll(library, highestLocalById);
+    if (!mounted) return;
+    setState(() {}); // Series.latestChapter mutated in place; refresh badges.
   }
 
   Future<void> _addSeries() async {
@@ -132,6 +162,44 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final name = await _promptName(initial: s.name, title: 'Rename series');
     if (name == null || name.trim().isEmpty) return;
     await library.renameSeries(s.id, name.trim());
+    await _load();
+  }
+
+  /// Manually re-checks one series' latest release. [entry] carries the
+  /// highest local chapter needed to compute the new-count.
+  Future<void> _refreshOne(_SeriesEntry entry) async {
+    final s = entry.series;
+    if (s.sourceType == null || refreshingIds.contains(s.id)) return;
+    setState(() => refreshingIds.add(s.id));
+
+    final result = await ReleaseTracker.refreshSeries(library, s, entry.highestLocal);
+
+    if (!mounted) return;
+    setState(() => refreshingIds.remove(s.id));
+    final msg = switch (result) {
+      null => 'Not tracked.',
+      TrackResult(fetched: false) => "Couldn't reach the source. Try again later.",
+      TrackResult(newCount: 0) => 'Up to date (latest ${_fmtNum(s.latestChapter!)}).',
+      TrackResult(:final newCount) =>
+        '$newCount new (latest ${_fmtNum(s.latestChapter!)}).',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _configureTracking(Series s) async {
+    final result = await showDialog<_TrackingConfig>(
+      context: context,
+      builder: (context) => _TrackingDialog(
+        initialType: s.sourceType,
+        initialRef: s.sourceRef,
+      ),
+    );
+    if (result == null) return; // dialog cancelled
+    await library.setSource(
+      s.id,
+      sourceType: result.type,
+      sourceRef: result.ref,
+    );
     await _load();
   }
 
@@ -255,8 +323,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         return _SeriesCard(
                           key: ValueKey(e.series.id),
                           entry: e,
+                          refreshing: refreshingIds.contains(e.series.id),
                           onTap: () => _openSeries(e.series),
                           onRename: () => _renameSeries(e.series),
+                          onTrack: () => _configureTracking(e.series),
+                          onRefresh: () => _refreshOne(e),
                           onRemove: () => _removeSeries(e.series),
                         );
                       },
@@ -270,6 +341,109 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       },
                     ),
             ),
+    );
+  }
+}
+
+class _TrackingConfig {
+  final String? type; // null clears tracking
+  final String? ref;
+  _TrackingConfig(this.type, this.ref);
+}
+
+/// Lets the user pick a release source (MangaDex id/URL or a scrape URL) or
+/// turn tracking off. Returns null on cancel, a [_TrackingConfig] on save.
+class _TrackingDialog extends StatefulWidget {
+  final String? initialType;
+  final String? initialRef;
+  const _TrackingDialog({this.initialType, this.initialRef});
+
+  @override
+  State<_TrackingDialog> createState() => _TrackingDialogState();
+}
+
+class _TrackingDialogState extends State<_TrackingDialog> {
+  late String type = widget.initialType ?? 'none';
+  late final refController = TextEditingController(text: widget.initialRef ?? '');
+  String? error;
+
+  @override
+  void dispose() {
+    refController.dispose();
+    super.dispose();
+  }
+
+  String get _hint => switch (type) {
+        'mangadex' => 'MangaDex URL or series id',
+        'scrape' => 'Page URL to scan for chapter numbers',
+        _ => '',
+      };
+
+  void _save() {
+    if (type == 'none') {
+      Navigator.pop(context, _TrackingConfig(null, null));
+      return;
+    }
+    final ref = refController.text.trim();
+    if (ref.isEmpty) {
+      setState(() => error = 'Enter a link first.');
+      return;
+    }
+    if (type == 'mangadex' && MangaDexSource.extractId(ref) == null) {
+      setState(() => error = "That doesn't contain a MangaDex series id.");
+      return;
+    }
+    if (type == 'scrape' && !ref.startsWith('http')) {
+      setState(() => error = 'Enter a full http(s) URL.');
+      return;
+    }
+    Navigator.pop(context, _TrackingConfig(type, ref));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Track releases'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DropdownButton<String>(
+            value: type,
+            isExpanded: true,
+            onChanged: (v) => setState(() {
+              type = v ?? 'none';
+              error = null;
+            }),
+            items: const [
+              DropdownMenuItem(value: 'none', child: Text('Off')),
+              DropdownMenuItem(value: 'mangadex', child: Text('MangaDex (official, English)')),
+              DropdownMenuItem(value: 'scrape', child: Text('Web page (any site)')),
+            ],
+          ),
+          if (type != 'none') ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: refController,
+              autofocus: true,
+              decoration: InputDecoration(hintText: _hint, errorText: error),
+            ),
+          ],
+          if (type == 'mangadex')
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Only official English chapters; may lag a few chapters behind '
+                'scanlation releases.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: _save, child: const Text('Save')),
+      ],
     );
   }
 }
@@ -294,15 +468,21 @@ class _StatChip extends StatelessWidget {
 
 class _SeriesCard extends StatelessWidget {
   final _SeriesEntry entry;
+  final bool refreshing;
   final VoidCallback onTap;
   final VoidCallback onRename;
+  final VoidCallback onTrack;
+  final VoidCallback onRefresh;
   final VoidCallback onRemove;
 
   const _SeriesCard({
     super.key,
     required this.entry,
+    required this.refreshing,
     required this.onTap,
     required this.onRename,
+    required this.onTrack,
+    required this.onRefresh,
     required this.onRemove,
   });
 
@@ -311,6 +491,8 @@ class _SeriesCard extends StatelessWidget {
     final total = entry.totalChapters;
     final read = entry.readCount;
     final pct = total == 0 ? 0 : (read / total * 100).round();
+    final newCount = entry.newChapters;
+    final tracked = entry.series.sourceType != null;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -336,26 +518,86 @@ class _SeriesCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(entry.series.name, style: Theme.of(context).textTheme.titleMedium),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(entry.series.name,
+                              style: Theme.of(context).textTheme.titleMedium),
+                        ),
+                        if (newCount > 0) _NewBadge(count: newCount),
+                      ],
+                    ),
                     const SizedBox(height: 6),
                     LinearProgressIndicator(value: total == 0 ? 0 : read / total),
                     const SizedBox(height: 4),
                     Text('$read / $total read ($pct%)'),
+                    if (tracked && entry.series.latestChapter != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          'Latest released: ${_fmtNum(entry.series.latestChapter!)}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
                   ],
                 ),
               ),
+              if (tracked)
+                IconButton(
+                  tooltip: 'Check for new chapters',
+                  onPressed: refreshing ? null : onRefresh,
+                  icon: refreshing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
+                ),
               PopupMenuButton<String>(
                 onSelected: (v) {
                   if (v == 'rename') onRename();
+                  if (v == 'track') onTrack();
                   if (v == 'remove') onRemove();
                 },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'rename', child: Text('Rename')),
-                  PopupMenuItem(value: 'remove', child: Text('Remove')),
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'rename', child: Text('Rename')),
+                  PopupMenuItem(
+                    value: 'track',
+                    child: Text(tracked ? 'Edit tracking…' : 'Track releases…'),
+                  ),
+                  const PopupMenuItem(value: 'remove', child: Text('Remove')),
                 ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+String _fmtNum(num n) =>
+    n == n.roundToDouble() ? n.toInt().toString() : n.toString();
+
+class _NewBadge extends StatelessWidget {
+  final int count;
+  const _NewBadge({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$count new',
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onPrimary,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

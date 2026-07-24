@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'library_screen.dart';
+import 'notifications.dart';
 import 'theme_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ThemeController.load();
+  await Notifications.init();
   runApp(const ShelfmarkApp());
 }
 
