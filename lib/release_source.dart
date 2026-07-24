@@ -12,6 +12,23 @@ import 'models/series.dart';
 abstract class ReleaseSource {
   Future<num?> fetchLatest();
 
+  /// Validates a (type, ref) pair from a tracking form. Returns null when
+  /// valid (including type 'none'), otherwise a user-facing error string.
+  /// Shared by the add-series and edit-tracking dialogs so the rules can't
+  /// drift apart.
+  static String? validateConfig(String type, String ref) {
+    if (type == 'none') return null;
+    final trimmed = ref.trim();
+    if (trimmed.isEmpty) return 'Enter a link first.';
+    if (type == 'mangadex' && MangaDexSource.extractId(trimmed) == null) {
+      return "That doesn't contain a MangaDex series id.";
+    }
+    if (type == 'scrape' && !trimmed.startsWith('http')) {
+      return 'Enter a full http(s) URL.';
+    }
+    return null;
+  }
+
   /// Builds the source configured on [s], or null if the series isn't
   /// tracked / is misconfigured.
   static ReleaseSource? forSeries(Series s) {

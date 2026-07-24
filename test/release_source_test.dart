@@ -47,6 +47,29 @@ void main() {
     });
   });
 
+  group('ReleaseSource.validateConfig', () {
+    const opId = 'a1c7c817-4e59-43b7-9365-09675a149a6f';
+
+    test('type none is always valid', () {
+      expect(ReleaseSource.validateConfig('none', ''), isNull);
+    });
+
+    test('empty ref for a real source is rejected', () {
+      expect(ReleaseSource.validateConfig('mangadex', '  '), isNotNull);
+      expect(ReleaseSource.validateConfig('scrape', ''), isNotNull);
+    });
+
+    test('mangadex needs a uuid, scrape needs an http url', () {
+      expect(ReleaseSource.validateConfig('mangadex', 'not-a-uuid'), isNotNull);
+      expect(
+        ReleaseSource.validateConfig('mangadex', 'https://mangadex.org/title/$opId'),
+        isNull,
+      );
+      expect(ReleaseSource.validateConfig('scrape', 'example.com'), isNotNull);
+      expect(ReleaseSource.validateConfig('scrape', 'https://example.com/op'), isNull);
+    });
+  });
+
   group('ScrapeSource.parseHtml', () {
     test('extracts the highest chapter number from page text', () {
       const html = '''

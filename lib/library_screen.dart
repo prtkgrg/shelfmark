@@ -133,10 +133,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
 
     final defaultName = path.split('/').where((p) => p.isNotEmpty).last;
-    final name = await _promptName(initial: defaultName, title: 'Name this series');
-    if (name == null || name.trim().isEmpty) return;
+    if (!mounted) return;
+    final config = await showDialog<_AddSeriesConfig>(
+      context: context,
+      builder: (context) => _AddSeriesDialog(initialName: defaultName),
+    );
+    if (config == null || config.name.trim().isEmpty) return;
 
-    await library.addSeries(name: name.trim(), folderPath: path);
+    await library.addSeries(
+      name: config.name.trim(),
+      folderPath: path,
+      sourceType: config.sourceType,
+      sourceRef: config.sourceRef,
+    );
     await _load();
   }
 
@@ -385,16 +394,9 @@ class _TrackingDialogState extends State<_TrackingDialog> {
       return;
     }
     final ref = refController.text.trim();
-    if (ref.isEmpty) {
-      setState(() => error = 'Enter a link first.');
-      return;
-    }
-    if (type == 'mangadex' && MangaDexSource.extractId(ref) == null) {
-      setState(() => error = "That doesn't contain a MangaDex series id.");
-      return;
-    }
-    if (type == 'scrape' && !ref.startsWith('http')) {
-      setState(() => error = 'Enter a full http(s) URL.');
+    final err = ReleaseSource.validateConfig(type, ref);
+    if (err != null) {
+      setState(() => error = err);
       return;
     }
     Navigator.pop(context, _TrackingConfig(type, ref));
@@ -443,6 +445,102 @@ class _TrackingDialogState extends State<_TrackingDialog> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(onPressed: _save, child: const Text('Save')),
+      ],
+    );
+  }
+}
+
+class _AddSeriesConfig {
+  final String name;
+  final String? sourceType;
+  final String? sourceRef;
+  _AddSeriesConfig(this.name, this.sourceType, this.sourceRef);
+}
+
+/// New-series dialog: name plus an optional release-tracking source, so a
+/// series can be tracked the moment it's added (not only via the ⋮ menu).
+class _AddSeriesDialog extends StatefulWidget {
+  final String initialName;
+  const _AddSeriesDialog({required this.initialName});
+
+  @override
+  State<_AddSeriesDialog> createState() => _AddSeriesDialogState();
+}
+
+class _AddSeriesDialogState extends State<_AddSeriesDialog> {
+  late final nameController = TextEditingController(text: widget.initialName);
+  final refController = TextEditingController();
+  String type = 'none';
+  String? refError;
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    refController.dispose();
+    super.dispose();
+  }
+
+  String get _hint => switch (type) {
+        'mangadex' => 'MangaDex URL or series id',
+        'scrape' => 'Page URL to scan for chapter numbers',
+        _ => '',
+      };
+
+  void _save() {
+    final name = nameController.text.trim();
+    if (name.isEmpty) return; // name is required; keep the dialog open
+    if (type == 'none') {
+      Navigator.pop(context, _AddSeriesConfig(name, null, null));
+      return;
+    }
+    final ref = refController.text.trim();
+    final err = ReleaseSource.validateConfig(type, ref);
+    if (err != null) {
+      setState(() => refError = err);
+      return;
+    }
+    Navigator.pop(context, _AddSeriesConfig(name, type, ref));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Add series'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: nameController,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Name'),
+          ),
+          const SizedBox(height: 16),
+          Text('Track releases (optional)',
+              style: Theme.of(context).textTheme.labelLarge),
+          DropdownButton<String>(
+            value: type,
+            isExpanded: true,
+            onChanged: (v) => setState(() {
+              type = v ?? 'none';
+              refError = null;
+            }),
+            items: const [
+              DropdownMenuItem(value: 'none', child: Text('Off')),
+              DropdownMenuItem(value: 'mangadex', child: Text('MangaDex (official, English)')),
+              DropdownMenuItem(value: 'scrape', child: Text('Web page (any site)')),
+            ],
+          ),
+          if (type != 'none')
+            TextField(
+              controller: refController,
+              decoration: InputDecoration(hintText: _hint, errorText: refError),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(onPressed: _save, child: const Text('Add')),
       ],
     );
   }
