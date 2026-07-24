@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'backup.dart';
 import 'chapter_scanner.dart';
@@ -195,6 +196,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  /// Opens the series' source page in an external browser so the user can
+  /// grab the new chapters themselves.
+  Future<void> _openSource(Series s) async {
+    final url = ReleaseSource.sourceUrlFor(s);
+    if (url == null) return;
+    final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Couldn't open $url")),
+      );
+    }
+  }
+
   Future<void> _configureTracking(Series s) async {
     final result = await showDialog<_TrackingConfig>(
       context: context,
@@ -337,6 +351,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           onRename: () => _renameSeries(e.series),
                           onTrack: () => _configureTracking(e.series),
                           onRefresh: () => _refreshOne(e),
+                          onOpenSource: () => _openSource(e.series),
                           onRemove: () => _removeSeries(e.series),
                         );
                       },
@@ -571,6 +586,7 @@ class _SeriesCard extends StatelessWidget {
   final VoidCallback onRename;
   final VoidCallback onTrack;
   final VoidCallback onRefresh;
+  final VoidCallback onOpenSource;
   final VoidCallback onRemove;
 
   const _SeriesCard({
@@ -581,6 +597,7 @@ class _SeriesCard extends StatelessWidget {
     required this.onRename,
     required this.onTrack,
     required this.onRefresh,
+    required this.onOpenSource,
     required this.onRemove,
   });
 
@@ -656,6 +673,7 @@ class _SeriesCard extends StatelessWidget {
                 onSelected: (v) {
                   if (v == 'rename') onRename();
                   if (v == 'track') onTrack();
+                  if (v == 'open') onOpenSource();
                   if (v == 'remove') onRemove();
                 },
                 itemBuilder: (context) => [
@@ -664,6 +682,8 @@ class _SeriesCard extends StatelessWidget {
                     value: 'track',
                     child: Text(tracked ? 'Edit tracking…' : 'Track releases…'),
                   ),
+                  if (tracked)
+                    const PopupMenuItem(value: 'open', child: Text('Open source page')),
                   const PopupMenuItem(value: 'remove', child: Text('Remove')),
                 ],
               ),
