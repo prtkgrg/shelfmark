@@ -35,11 +35,18 @@ class LibraryStore {
     await _persist();
   }
 
-  Future<Series> addSeries({required String name, required String folderPath}) async {
+  Future<Series> addSeries({
+    required String name,
+    required String folderPath,
+    String? sourceType,
+    String? sourceRef,
+  }) async {
     final s = Series(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       name: name,
       folderPath: folderPath,
+      sourceType: sourceType,
+      sourceRef: sourceRef,
     );
     series.add(s);
     await _persist();
