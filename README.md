@@ -23,13 +23,12 @@ where you are inside a file, but not where you are across a folder. Shelfmark
 keeps a library of those folders and remembers, for each series, which chapters
 you've read and the page you stopped on.
 
-<!-- Screenshots: add images to docs/screenshots/ and uncomment
 <p align="center">
   <img src="docs/screenshots/library.png" width="30%" alt="Library">
   <img src="docs/screenshots/series.png" width="30%" alt="Chapter list">
   <img src="docs/screenshots/reader.png" width="30%" alt="Reader">
 </p>
--->
+<p align="center"><sub>Library, chapter list and reader. Artwork is pixelated.</sub></p>
 
 ## Features
 
