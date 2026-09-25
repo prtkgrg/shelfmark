@@ -15,7 +15,7 @@ class Notifications {
     if (_initialized) return;
     try {
       await _plugin.initialize(
-        const InitializationSettings(
+        settings: const InitializationSettings(
           android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         ),
       );
@@ -42,11 +42,11 @@ class Notifications {
     try {
       await init();
       await _plugin.show(
-        notificationId,
-        seriesName,
-        '$newCount new chapter${newCount == 1 ? '' : 's'} '
-        '(${_fmt(from)} → ${_fmt(to)})',
-        const NotificationDetails(
+        id: notificationId,
+        title: seriesName,
+        body: '$newCount new chapter${newCount == 1 ? '' : 's'} '
+            '(${_fmt(from)} → ${_fmt(to)})',
+        notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             _channelId,
             _channelName,

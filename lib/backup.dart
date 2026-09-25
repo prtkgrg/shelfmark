@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -48,20 +47,20 @@ Future<void> exportBackup(BuildContext context, LibraryStore library) async {
 }
 
 Future<void> importBackup(BuildContext context, LibraryStore library) async {
-  final result = await FilePicker.pickFiles(
+  final file = await FilePicker.pickFile(
     type: FileType.custom,
     allowedExtensions: ['json'],
-    withData: true,
   );
-  if (result == null || result.files.isEmpty) return;
+  if (file == null) return;
 
-  final file = result.files.single;
   String raw;
-  if (file.bytes != null) {
-    raw = utf8.decode(file.bytes!);
-  } else if (file.path != null) {
-    raw = await File(file.path!).readAsString();
-  } else {
+  try {
+    raw = utf8.decode(await file.readAsBytes());
+  } catch (_) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not read that file.')),
+    );
     return;
   }
 
